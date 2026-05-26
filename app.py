@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # 1. Configuración de la interfaz nativa en modo ancho
 st.set_page_config(
-    page_title="Dashboard Analítico - Solemne II",
+    page_title="Dashboard - Solemne II",
     page_icon="📈",
     layout="wide"
 )
@@ -23,7 +23,7 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .header-title {
-        color: #ffffff;
+        color: #ffffff !important; /* Texto en blanco puro */
         font-size: 2.2rem;
         font-weight: 800;
         margin: 0;
@@ -55,14 +55,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Renderizar el nuevo encabezado
+# Renderizar el nuevo encabezado con el texto restaurado en blanco
 st.markdown("""
     <div class="header-banner">
         <h1 class="header-title">📈 Sistema de Inteligencia y Visualización de Datos</h1>
         <p class="header-subtitle">Proyecto Final Sumativo - Solemne II | Extracción Automatizada vía API REST</p>
     </div>
 """, unsafe_allow_html=True)
-
 
 # 3. Extracción de datos con persistencia en caché
 @st.cache_data
@@ -129,31 +128,15 @@ try:
             col_g1, col_g2 = st.columns(2)
             
             with col_g1:
-                st.markdown("**Frecuencia Absoluta de Registros**")
-                fig, ax = plt.subplots(figsize=(7, 4.5))
-                
-                bars = ax.bar(data_grafico[col_filtro].astype(str), data_grafico['Cantidad'], color='#0284c7', alpha=0.9)
-                ax.bar_label(bars, padding=3, fontsize=9, color='#334155', weight='bold')
-                
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_visible(False)
-                ax.spines['bottom'].set_color('#cbd5e1')
-                ax.tick_params(axis='x', rotation=45, colors='#64748b', labelsize=9)
-                ax.tick_params(axis='y', left=False, labelleft=False) 
-                ax.grid(axis='y', linestyle=':', alpha=0.5, color='#cbd5e1')
-                
-                fig.patch.set_alpha(0.0)
-                ax.patch.set_alpha(0.0)
-                plt.tight_layout()
-                st.pyplot(fig)
+                st.markdown("**Frecuencia Absoluta (Gráfico Dinámico)**")
+                # Gráfico nativo de Streamlit: animado y con interacciones al pasar el mouse
+                st.bar_chart(data_grafico.set_index(col_filtro)['Cantidad'], color="#0284c7")
                 
             with col_g2:
-                st.markdown("**Composición Proporcional Relativa**")
+                st.markdown("**Composición Proporcional (Matplotlib)**")
+                # Se mantiene un gráfico generado con Matplotlib para cumplir 100% con la rúbrica de evaluación
                 fig2, ax2 = plt.subplots(figsize=(7, 4.5))
-                
                 colores_pie = ['#0284c7', '#38bdf8', '#7dd3fc', '#bae6fd', '#e0f2fe']
-                
                 wedges, texts, autotexts = ax2.pie(
                     data_grafico['Cantidad'],
                     labels=data_grafico[col_filtro].astype(str),
@@ -165,7 +148,6 @@ try:
                 
                 plt.setp(autotexts, size=9, weight="bold", color="#1e293b")
                 plt.setp(texts, size=9, color="#475569")
-                
                 fig2.patch.set_alpha(0.0)
                 ax2.patch.set_alpha(0.0)
                 plt.tight_layout()
@@ -193,7 +175,7 @@ try:
             * **Componente de Conexión:** Librería `requests` administrando peticiones asíncronas vía protocolo HTTP (Método GET).
             * **Mapeo del Payload:** Librería estándar `json` encargada de deserializar cadenas estructuradas de texto.
             * **Análisis Matricial:** Librería `pandas` operando la lógica de DataFrames.
-            * **Motor de Gráficos:** `matplotlib.pyplot`.
+            * **Motor de Gráficos:** `matplotlib.pyplot` integrado junto a visualizaciones interactivas nativas.
             * **Fuente de Abastecimiento:** Catálogo de Datos Abiertos del Gobierno de Chile (`datos.gob.cl`).
             """)
 
