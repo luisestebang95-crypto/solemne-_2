@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Inyección de CSS Seguro (Encabezado de color y Pestañas dinámicas)
+# 2. Inyección de CSS Seguro
 st.markdown("""
     <style>
     .header-banner {
@@ -64,10 +64,7 @@ st.markdown("""
 @st.cache_data
 def cargar_datos_api():
     url = "https://datos.gob.cl/api/3/action/datastore_search"
-    params = {
-        "resource_id": "d9631921-ebb9-4268-80d9-9a904e8cdcda", 
-        "limit": 500
-    }
+    params = {"resource_id": "d9631921-ebb9-4268-80d9-9a904e8cdcda", "limit": 500}
     response = requests.get(url, params=params)
     response.raise_for_status()
     
@@ -81,20 +78,20 @@ def cargar_datos_api():
 try:
     df = cargar_datos_api()
     
-    columnas_texto = df.select_dtypes(include=['object']).columns.tolist()
-    columnas_num = df.select_dtypes(exclude=['object']).columns.tolist()
-    col_filtro = columnas_texto[0] if columnas_texto else None
+    # Identificar columnas de texto (Categorías) y detectar las columnas de años (que tienen números en su nombre)
+    columnas_texto = ['Grupo de minerales', 'Sector', 'Mineral', 'Unidad']
+    columnas_anios = [c for c in df.columns if any(char.isdigit() for char in c) and c not in columnas_texto]
+    col_filtro = 'Grupo de minerales' if 'Grupo de minerales' in df.columns else df.columns[0]
 
     if col_filtro:
-        # Panel Lateral Técnico (Sidebar)
+        # Panel Lateral Técnico
         st.sidebar.header("⚙️ Filtros de Segmentación")
-        st.sidebar.markdown("Seleccione los minerales que desea comparar:")
         
         opciones = df[col_filtro].unique().tolist()
         seleccion = st.sidebar.multiselect(
             f"Filtro de {col_filtro}:",
             options=opciones,
-            default=opciones[:4] # Mostramos 4 por defecto para que el gráfico de líneas no se sature al inicio
+            default=opciones[:4] 
         )
         
         df_filtrado = df[df[col_filtro].isin(seleccion)]
@@ -109,15 +106,20 @@ try:
             m1.metric(label="Volumen Total de Registros", value=f"{len(df_filtrado):,}")
             m2.metric(label="Minerales en Comparativa", value=len(seleccion))
             
-            if columnas_num:
-                col_matematica = columnas_num[0]
-                total_calculado = pd.to_numeric(df_filtrado[col_matematica], errors='coerce').sum()
-                m3.metric(label=f"Producción Acumulada ({col_matematica})", value=f"{total_calculado:,.2f}")
+            if columnas_anios:
+                ultimo_anio_str = columnas_anios[-1]
+                anio_limpio = ultimo_anio_str.replace('.', '')
+                
+                # Limpieza de la columna del último año para poder sumar el KPI
+                valores_limpios = df_filtrado[ultimo_anio_str].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+                total_calculado = pd.to_numeric(valores_limpios, errors='coerce').sum()
+                
+                m3.metric(label=f"Producción Año {anio_limpio}", value=f"{total_calculado:,.1f}")
             else:
                 m3.metric(label="Conexión de Servidor", value="Operacional 🟢")
             
             st.markdown("---")
-            st.markdown("### 📉 Distribución Estática (Totales)")
+            st.markdown("### 📉 Distribución Estática (Totales Registrados)")
             
             data_grafico = df_filtrado[col_filtro].value_counts().reset_index()
             data_grafico.columns = [col_filtro, 'Cantidad']
@@ -153,38 +155,37 @@ try:
             st.markdown("---")
             st.markdown("### 📈 Evolución Temporal (Comparativa Histórica)")
             
-            # Buscamos la columna que represente el tiempo (año, mes, fecha)
-            time_cols = [c for c in df.columns if any(k in c.lower() for k in ['año', 'ano', 'fecha', 'periodo', 'year', 'mes'])]
-            col_tiempo = time_cols[0] if time_cols else None
-            
-            if col_tiempo and columnas_num:
-                # Agrupamos por Año y Mineral, sumando la producción
-                df_linea = df_filtrado.groupby([col_tiempo, col_filtro])[col_matematica].sum().unstack().fillna(0)
+            if columnas_anios:
+                # 1. Transformar formato ancho a largo (Melt)
+                id_vars_presentes = [c for c in columnas_texto if c in df_filtrado.columns]
+                df_linea = df_filtrado.melt(id_vars=id_vars_presentes, value_vars=columnas_anios, var_name='Año', value_name='Producción')
+                
+                # 2. Limpieza de formato numérico de Chile ("1.997" -> "1997" y "21.339,4" -> 21339.4)
+                df_linea['Año'] = df_linea['Año'].astype(str).str.replace('.', '', regex=False)
+                df_linea['Producción'] = df_linea['Producción'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+                df_linea['Producción'] = pd.to_numeric(df_linea['Producción'], errors='coerce').fillna(0)
+                
+                # 3. Pivotar para graficar múltiples líneas
+                df_pivot = df_linea.groupby(['Año', col_filtro])['Producción'].sum().unstack().fillna(0)
                 
                 fig3, ax3 = plt.subplots(figsize=(12, 5))
+                marcas = ['o', 's', '^', 'D', 'v', '<', '>']
                 
-                # Definimos marcadores para diferenciar bien cada línea
-                marcas = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
-                
-                for i, mineral in enumerate(df_linea.columns):
+                for i, mineral in enumerate(df_pivot.columns):
                     ax3.plot(
-                        df_linea.index.astype(str), 
-                        df_linea[mineral], 
+                        df_pivot.index, 
+                        df_pivot[mineral], 
                         marker=marcas[i % len(marcas)], 
                         linewidth=2.5, 
                         label=str(mineral)
                     )
                 
-                # Estilos del gráfico de líneas
                 ax3.spines['top'].set_visible(False)
                 ax3.spines['right'].set_visible(False)
                 ax3.grid(axis='y', linestyle='--', alpha=0.6, color='#cbd5e1')
-                ax3.grid(axis='x', linestyle=':', alpha=0.3, color='#cbd5e1')
-                ax3.set_ylabel(f"Volumen de {col_matematica}", color='#475569', weight='bold')
-                ax3.set_xlabel(col_tiempo.capitalize(), color='#475569', weight='bold')
+                ax3.set_ylabel("Producción Total", color='#475569', weight='bold')
+                ax3.set_xlabel("Año", color='#475569', weight='bold')
                 ax3.tick_params(colors='#64748b', rotation=45)
-                
-                # Leyenda externa
                 ax3.legend(title="Mineral", bbox_to_anchor=(1.02, 1), loc='upper left', frameon=False)
                 
                 fig3.patch.set_alpha(0.0)
@@ -192,7 +193,7 @@ try:
                 plt.tight_layout()
                 st.pyplot(fig3)
             else:
-                st.info("No se detectó una columna de tiempo (Año/Fecha) o valores numéricos para generar la evolución temporal en este dataset.")
+                st.info("No se detectó una estructura de años en las columnas para generar la evolución temporal.")
 
         with tab2:
             st.markdown("### 🗄️ Explorador Completo de Datos")
@@ -213,7 +214,7 @@ try:
             * **Capa de Presentación:** Streamlit Web Framework.
             * **Componente de Conexión:** Librería `requests` administrando peticiones asíncronas vía HTTP.
             * **Mapeo del Payload:** `json` para deserializar.
-            * **Análisis Matricial:** Lógica de DataFrames con `pandas` (`groupby`, `unstack`).
+            * **Análisis Matricial:** Lógica de DataFrames con `pandas` (`melt`, `groupby`, `unstack` para limpieza de formato ancho).
             * **Motor de Gráficos:** `matplotlib.pyplot` (Gráficos de Torta y Líneas temporales múltiples).
             * **Fuente de Abastecimiento:** API Oficial del Gobierno de Chile.
             """)
